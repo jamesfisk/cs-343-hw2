@@ -20,6 +20,30 @@ def weak_contains(items, target):
             return True
     return False
 
+"""
+need to extend the search for On(a,c) = On(a,b) && On(b,c)
+"""
+
+def first_level_match(ground1, ground2):
+    if ground1.predicate != ground2.predicate:
+        return False
+    if len(ground1.literals) != len(ground2.literals):
+        return False
+    if ground1.literals[0] != ground2.literals[0]:
+        return False
+    return True
+
+def second_level_match(ground1, ground2, ground3):
+    if ground1.predicate != ground3.predicate:
+        return False
+    if len(ground1.literals) != len(ground3.literals):
+        return False
+    if ground1.literals[1] != ground3.literals[1]:
+        return False
+    if ground2.literals[1] != ground3.literals[0]:
+        return False
+    return True
+
 def weak_find(items, target):
     for item in items:
         if weak_match(item, target):
@@ -39,6 +63,22 @@ def weak_match(ground1, ground2):
         if i != j:
             return False
     return True
+
+def action_match(action1, action2):
+    for i,j in zip(action1.literals, action2.literals):
+        if i != j:
+            return False
+    return True
+
+def undo_match(action1, action2):
+    if action1.literals[0] != action2.literals[0]:
+        return False
+    if action1.literals[1] != action2.literals[2]:
+        return False
+    if action1.literals[2] != action2.literals[1]:
+        return False
+    return True
+
 
 def strong_find(items, condition):
     for item in items:
@@ -368,19 +408,27 @@ debug = True
 
 def linear_solver(world):
     state = []
+    state_action = []
 
     # the world state is a dictionary from predicate names to true grounded args of that predicate
     for predicate in world.state:
         for literals in world.state[predicate]:
             state.append(GroundedCondition(predicate, literals, True))
 
-    goals = list(world.goals)
+    #stack hardest goal first
+    goals = (list(world.goals))#.reverse()
+    if len(goals) > 2:
+        goals[0], goals[2] = goals[2], goals[0]
+        goals[1], goals[2] = goals[2], goals[1]
+    # goals.pop(1)
+    # goals.pop(1)
     
     InfiniteLoopGuard.reset()
+    previous_action = None
 
-    return linear_solver_helper(world, state, goals, [])
+    return linear_solver_helper(world, state, goals, [], previous_action)
 
-def linear_solver_helper(world, state, goals, current_plan, depth = 0):
+def linear_solver_helper(world, state, goals, current_plan, previous_action, depth = 0):
     padding = "".join(["++" for x in range(0,len(current_plan))]) + " "
     plan = []
 
@@ -429,8 +477,9 @@ def linear_solver_helper(world, state, goals, current_plan, depth = 0):
             viewer.display_text(padding + "State: {0}".format(", ".join([str(s) for s in state])))
             viewer.user_pause("")
 
-        if satisfied(state, goal):
-            # recurse
+        if satisfied(state, goal):  #if goal satisfied in current state continue
+            # recursei
+            # TODO: change satisfied to look 2 discs deep in current state
             if debug:
                 viewer.add_completed_index(i, this_level_subgoal_view)
                 viewer.user_pause(padding + "Satisfied already")
@@ -438,8 +487,9 @@ def linear_solver_helper(world, state, goals, current_plan, depth = 0):
             i += 1
             continue
 
-        possible_actions = sorted(get_possible_grounds(world, goal), key=lambda c: initial_state_distance(state, c.pre))
+        all_possible_actions = sorted(get_possible_grounds(world, goal), key=lambda c: initial_state_distance(state, c.pre, c))
 
+        possible_actions = remove_bad_actions(all_possible_actions, state)
         # otherwise, we need to find a subgoal that will get us to the goal
         # find all the grounded actions which will satisfy the goal
         if debug:
@@ -453,12 +503,28 @@ def linear_solver_helper(world, state, goals, current_plan, depth = 0):
         found = False
 
         for action in possible_actions:
-
+            
             if debug:
                 viewer.set_active_index(action_index, this_subgoal_action_list)
                 viewer.display_text(padding + "Trying next action to satisfy {0}:".format(goal))
                 viewer.display_text(padding + str(action).replace("\n", "\n" + padding))
                 viewer.user_pause("")
+
+
+            if previous_action is not None and action_match(action, previous_action):
+                if debug:
+                    viewer.set_active_index(action_index, this_subgoal_action_list)
+                    viewer.display_text(padding + "Action same as previous action, skipping")
+                    viewer.user_pause("")
+                continue
+            
+            if previous_action is not None and undo_match(action, previous_action):
+                if debug:
+                    viewer.set_active_index(action_index, this_subgoal_action_list)
+                    viewer.display_text(padding + "Action undoing previous action, skipping")
+                    viewer.user_pause("")
+                continue
+
 
             # check if there is at least 1 action for each precondition which satisfies it
             if not preconditions_reachable(world, action):
@@ -477,7 +543,15 @@ def linear_solver_helper(world, state, goals, current_plan, depth = 0):
                     action_index += 1                    
                     viewer.user_pause("")
                 continue
-
+            """
+            if (state, action) in state_action:
+                if debug:
+                    viewer.add_hidden_index(action_index, this_subgoal_action_list)                    
+                    viewer.display_text(padding + "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&Already took this action from this state. Skipping...")
+                    action_index += 1
+                    viewer.user_pause("")
+                continue
+            """
             # if we can't obviously reject it as unreachable, we have to recursively descend.
             if debug:
                 viewer.display_text(padding + "Action cannot be trivially rejected as unreachable. Descending...")
@@ -488,9 +562,12 @@ def linear_solver_helper(world, state, goals, current_plan, depth = 0):
             subgoals = list(action.pre)
 
             current_plan.append(action)
-
-            solution = linear_solver_helper(world, temp_state, subgoals, current_plan, depth = depth + 1)
-
+            previous_action = action
+            #state_action.append((temp_state, action))
+            
+            #solution = linear_solver_helper(world, temp_state, subgoals, current_plan, state_action, depth = depth + 1)
+            solution = linear_solver_helper(world, temp_state, subgoals, current_plan, previous_action, depth = depth + 1)
+            
             # we were unable to find
             if solution is None:
                 if debug:
@@ -585,6 +662,56 @@ def linear_solver_helper(world, state, goals, current_plan, depth = 0):
             viewer.remove_last_item_viewer(this_level_subgoal_view)
     return plan
 
+def remove_bad_actions (actions, state):
+    good_actions = actions[:]
+    
+
+    for action in actions:
+
+        #pole is being moved
+     if action.literals[0][0] == 'P':
+            good_actions.remove(action)
+            continue
+        #bigger disk onto smaller disk
+     elif action.literals[1][0] == 'D' and int(action.literals[0][-1]) > int(action.literals[1][-1]):
+            good_actions.remove(action)
+            continue
+     elif action.literals[2][0] == 'D' and int(action.literals[0][-1]) > int(action.literals[2][-1]):
+            good_actions.remove(action)
+            continue
+        #destination is occupied
+     elif (hasOn(action.literals[2], state)):
+            good_actions.remove(action)
+            continue
+     for condition in state:
+         #moving onto something it is already on
+        if (isOn(action.literals[0], action.literals[2], state)):
+            good_actions.remove(action)
+            break
+        elif (condition.predicate=="On" and action.literals[0] == condition.literals[0] and action.literals[1] != condition.literals[1]):
+            good_actions.remove(action)
+            break
+    return good_actions
+
+#returns true if literal has something on it
+def hasOn(literal, state):
+    for condition in state:
+        if (condition.predicate=="On" and literal==condition.literals[1]):
+            return True
+    return False
+
+#looks down the on-chain to see if something is ultimately on top of another thing
+def isOn(literal1, literal2, state):
+   for condition in state:
+       if (condition.predicate=="On" and literal1 == condition.literals[0]
+           and literal2 == condition.literals[1]):
+           return True
+   for condition in state:
+       if (condition.predicate=="On" and literal1 == condition.literals[0]):
+           return isOn(condition.literals[1], literal2, state)
+   return False
+
+
 def contains_contradiction(state, action):
     for post in action.post:
         m = weak_find(state, post)
@@ -593,21 +720,33 @@ def contains_contradiction(state, action):
     return False
 
 
-def initial_state_distance(state, preconds):
+def initial_state_distance(state, preconds, action):
     count = 0
+    value = 0
+    name = action.literals[0]
+    if name[0] == 'D':
+        value = int(name[-1])
     for p in preconds:
         if not satisfied(state, p):
             count += 1
-    return count
+    return (-1) * (count + value * 100)
 
 def satisfied(state, goal):
     condition = weak_find(state, goal)
-
-    # we only keep track of positive literals (closed world assumption), so if it's here, it's true
     if goal.truth == True:
         return condition != None
 
     # if it's not here, we assume it's false
+    return condition == None
+
+def transitive_satisfied(state, goal):
+    condition = transitive_find(state, goal)
+    if goal.truth == True:
+        if condition != None:
+            print ("found transitive satisfied")
+        return condition != None
+
+    #if it's not here we assume it's false
     return condition == None
 
 def preconditions_reachable(world, action):
