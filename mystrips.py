@@ -20,9 +20,6 @@ def weak_contains(items, target):
             return True
     return False
 
-"""
-need to extend the search for On(a,c) = On(a,b) && On(b,c)
-"""
 
 def first_level_match(ground1, ground2):
     if ground1.predicate != ground2.predicate:
@@ -416,12 +413,10 @@ def linear_solver(world):
             state.append(GroundedCondition(predicate, literals, True))
 
     #stack hardest goal first
-    goals = (list(world.goals))#.reverse()
+    goals = (list(world.goals))
     if len(goals) > 2:
         goals[0], goals[2] = goals[2], goals[0]
         goals[1], goals[2] = goals[2], goals[1]
-    # goals.pop(1)
-    # goals.pop(1)
     
     InfiniteLoopGuard.reset()
     previous_action = None
@@ -435,12 +430,6 @@ def linear_solver_helper(world, state, goals, current_plan, previous_action, dep
     #setup debagging info
     if debug:
         this_subgoal_action_list = -1
-    """
-    print "Current Plan: {0}".format("\n".join([x.simple_str() for x in current_plan]))
-    print ""
-    print "---------------------------"
-    print ""
-    """
 
     if len(goals) == 0:
         return plan
@@ -543,15 +532,7 @@ def linear_solver_helper(world, state, goals, current_plan, previous_action, dep
                     action_index += 1                    
                     viewer.user_pause("")
                 continue
-            """
-            if (state, action) in state_action:
-                if debug:
-                    viewer.add_hidden_index(action_index, this_subgoal_action_list)                    
-                    viewer.display_text(padding + "&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&Already took this action from this state. Skipping...")
-                    action_index += 1
-                    viewer.user_pause("")
-                continue
-            """
+            
             # if we can't obviously reject it as unreachable, we have to recursively descend.
             if debug:
                 viewer.display_text(padding + "Action cannot be trivially rejected as unreachable. Descending...")
@@ -563,9 +544,7 @@ def linear_solver_helper(world, state, goals, current_plan, previous_action, dep
 
             current_plan.append(action)
             previous_action = action
-            #state_action.append((temp_state, action))
             
-            #solution = linear_solver_helper(world, temp_state, subgoals, current_plan, state_action, depth = depth + 1)
             solution = linear_solver_helper(world, temp_state, subgoals, current_plan, previous_action, depth = depth + 1)
             
             # we were unable to find

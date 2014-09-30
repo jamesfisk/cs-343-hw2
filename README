@@ -1,0 +1,6 @@
+HW02 Planning Report
+CS 343 Artificial Intelligence
+Group 7 James Fisk & Kevin Hinojosa
+
+
+We implemented a dualfold strategy in attacking the problem of the STRIPS planner. We identified two areas where the current planning agent was falling short. First, the agent was identifying impossible actions as a strategy for goal attainment (i.e. moving Pole 3 onto Disk 1). Secondly, we saw that the system naturally prioritized trivial goals over fundamental ones, and fell into an infinite loop when these two goals were at odds. To tackle this problem, we created the remove_bad_moves() function to eliminate impossible goals from our agent, and we updated the sorting function to prioritize harder, more fundamental goals (larger disks) over the more trivial ones (smaller disks). This model delivers optimal solutions for 2 and 3-disk puzzles, and can solve 4-disk puzzles. Our agent requires no special instructions.
